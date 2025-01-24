@@ -5,23 +5,42 @@ facilitates the user in creating and organising handwritten notes.
 
 This privacy policy will change as the app evolves: you can view any changes on this page
 and can track the app's progress through the
-[Saber progress discussion](https://github.com/adil192/saber/discussions/1)
+[Saber progress discussion](https://github.com/saber-notes/saber/discussions/1)
 and the changelogs on the
-[Releases](https://github.com/adil192/saber/releases) page.
+[Releases](https://github.com/saber-notes/saber/releases) page.
 
 ## What data does the application use?
 
-Data the application uses includes the user's:
-- Notes
-- Settings
-- Online cloud service (referred to as "the cloud") credentials including:
-  - the cloud server URI
-  - the user's display name
-  - the user's password to protect notes
-
 The application seeks to access the least amount of data possible
 and uses a zero-trust approach to cloud storage.
-The application does not use any third-party tracking APIs.
+
+Data the application uses includes the user's:
+- Notes (including images and backgrounds): Used for the main functionality of the application
+- In-app settings: Used to customise the application to the user's preferences
+- Online cloud service (referred to as "the cloud") credentials including the server URI, username, and passwords: Used to enable syncing between devices
+- Data used by third-parties (see below)
+
+### Third-party data usage
+
+The application uses third-party services to provide certain features.
+
+#### Google AdMob
+
+Update: As of 23 September 2024, ads have been removed from the development version of the application
+and will soon be removed from the stable version. Please disregard this section if you are using
+Saber v0.24.7 or later.
+
+Certain versions of the application are supported by Google AdMob ads including Google's ad network
+and other GDPR-compliant ad networks:
+- The iOS version available on the App Store
+- The Android version available on the Google Play Store
+- The Android version available from the repo's [Releases](https://github.com/saber-notes/saber/releases) page on GitHub
+
+Note that the Android version available on F-Droid does not use Google AdMob or contain ads.
+
+AdMob may collect data about you, including your device's advertising ID, IP address, and location. You can read more about [how Google uses data from apps that use their services](https://policies.google.com/technologies/partner-sites).
+
+When you first open Saber, you will be asked to choose between personalized ads and non-personalized ads. You can change this at any time on the Settings page, or disable ads completely. 
 
 ## How is the cloud used?
 
@@ -60,8 +79,8 @@ so they're unreadable to the server owner.
 ## “Talk is cheap. Show me the code.”
 
 The source code is free and open to the public under the
-[GPLv3 license](https://github.com/adil192/saber/blob/main/LICENSE.md)
-and is available on [GitHub](https://github.com/adil192/saber).
+[GPLv3 license](https://github.com/saber-notes/saber/blob/main/LICENSE.md)
+and is available on [GitHub](https://github.com/saber-notes/saber).
 
 ## How can I delete my data?
 
@@ -83,5 +102,5 @@ How you can delete your data will vary based on which cloud provider you use.
 
 This application is developed by Adil Hanney.
 You can contact me at [adilhanney@disroot.org](mailto:adilhanney@disroot.org) for any enquiries,
-or [create an issue](https://github.com/adil192/saber/issues/new/choose)
+or [create an issue](https://github.com/saber-notes/saber/issues/new/choose)
 on this repo (requires a GitHub account).
