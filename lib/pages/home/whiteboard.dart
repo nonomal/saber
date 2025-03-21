@@ -1,43 +1,36 @@
-
 import 'package:flutter/material.dart';
+import 'package:saber/components/canvas/save_indicator.dart';
+import 'package:saber/data/prefs.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor.dart';
 
-class Whiteboard extends StatefulWidget {
+class Whiteboard extends StatelessWidget {
   const Whiteboard({super.key});
 
-  @override
-  State<Whiteboard> createState() => _WhiteboardPageState();
-}
+  static const String filePath = '/_whiteboard';
 
-class _WhiteboardPageState extends State<Whiteboard> {
-  // editor key
-  final GlobalKey _editorKey = GlobalKey();
+  static bool needsToAutoClearWhiteboard =
+      Prefs.autoClearWhiteboardOnExit.value;
+
+  static final _whiteboardKey =
+      GlobalKey<EditorState>(debugLabel: 'whiteboard');
+
+  static SavingState? get savingState =>
+      _whiteboardKey.currentState?.savingState.value;
+  static void triggerSave() {
+    final editorState = _whiteboardKey.currentState;
+    if (editorState == null) return;
+    assert(editorState.savingState.value == SavingState.waitingToSave);
+    editorState.saveToFile();
+    editorState.snackBarNeedsToSaveBeforeExiting();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(t.home.titles.whiteboard),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            onPressed: () {
-              dynamic editorState = _editorKey.currentState;
-              if (editorState == null) return;
-              showModalBottomSheet(
-                context: context,
-                builder: (context) => editorState!.bottomSheet,
-              );
-            },
-          )
-        ],
-      ),
-      body: Editor(
-        key: _editorKey,
-        path: "/_whiteboard",
-        embedded: true,
-      ),
+    return Editor(
+      key: _whiteboardKey,
+      path: filePath,
+      customTitle: t.home.titles.whiteboard,
     );
   }
 }
