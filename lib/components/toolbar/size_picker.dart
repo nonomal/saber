@@ -1,133 +1,200 @@
-
-import 'dart:async';
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:saber/components/canvas/tools/pen.dart';
+import 'package:saber/components/theming/row_col.dart';
+import 'package:saber/data/tools/pen.dart';
 import 'package:saber/i18n/strings.g.dart';
 
 class SizePicker extends StatefulWidget {
   const SizePicker({
     super.key,
-    required this.currentTool,
+    required this.axis,
+    required this.pen,
   });
 
-  final double max = 25;
-  final Pen currentTool;
+  final Axis axis;
+  final Pen pen;
 
   @override
   State<SizePicker> createState() => _SizePickerState();
+
+  static const double smallLength = 25;
+  static const double largeLength = 150;
+}
+
+/// Returns a string representation of [num] that:
+/// - Has no decimal point if [num] is an integer
+/// - Has one decimal point if [num] has a non-zero fractional part
+String _prettyNum(double num) {
+  final rounded = num.round();
+  if (num == rounded) return rounded.toString();
+  return num.toStringAsFixed(1);
 }
 
 class _SizePickerState extends State<SizePicker> {
-
-  final TextEditingController _controller = TextEditingController();
-
-  Offset? startingOffset;
-  double startingValue = 0;
-
   @override
-  void initState() {
-    super.initState();
-    updateValue();
-    _controller.addListener(() {
-      updateValue(
-        newValue: double.tryParse(_controller.text),
-        manuallyTypedIn: true,
-      );
-    });
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return RowCol(
+      axis: widget.axis,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Column(
+          children: [
+            Text(
+              t.editor.penOptions.size,
+              style: TextStyle(
+                color: colorScheme.onSurface.withValues(alpha: 0.8),
+                fontSize: 10,
+                height: 1,
+              ),
+            ),
+            Text(_prettyNum(widget.pen.options.size)),
+          ],
+        ),
+        const SizedBox(width: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: _SizeSlider(
+            pen: widget.pen,
+            axis: widget.axis,
+            setState: setState,
+          ),
+        ),
+      ],
+    );
   }
+}
 
-  Timer? updateTextFieldTimer;
-  void updateValue({double? newValue, bool manuallyTypedIn = false}) {
-    if (newValue != null) {
-      setState(() {
-        widget.currentTool.strokeProperties.size = newValue.clamp(1, widget.max).roundToDouble();
-      });
-    }
+class _SizeSlider extends StatelessWidget {
+  const _SizeSlider({
+    // ignore: unused_element_parameter
+    super.key,
+    required this.pen,
+    required this.axis,
+    required this.setState,
+  });
 
-    String valueString = widget.currentTool.strokeProperties.size.round().toString();
-    updateTextFieldTimer?.cancel();
-    if (manuallyTypedIn) {
-      updateTextFieldTimer = Timer(const Duration(milliseconds: 3000), () {
-        _controller.text = valueString;
-      });
-    } else if (_controller.text != valueString) {
-      _controller.text = valueString;
-    }
-  }
+  final Pen pen;
+  final Axis axis;
+  final void Function(void Function()) setState;
 
-  void onDrag(Offset currentOffset) {
-    if (startingOffset == null) return;
-
-    final double delta = (currentOffset.dx - startingOffset!.dx) / widget.max * 4;
-    final double newValue = startingValue + delta;
+  /// [percent] is a value between 0 and 1
+  /// where 0 is the start of the slider and 1 is the end.
+  ///
+  /// Values outside of this range are allowed but will be clamped.
+  void onDrag(double percent) {
+    percent = clampDouble(percent, 0, 1);
+    final stepsFromMin = (percent * pen.sizeStepsBetweenMinAndMax).round();
+    final newSize = pen.sizeMin + stepsFromMin * pen.sizeStep;
+    if (newSize == pen.options.size) return;
     setState(() {
-      updateValue(newValue: newValue);
+      pen.options.size = newSize;
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return MouseRegion(
-      cursor: SystemMouseCursors.resizeLeftRight,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onPanStart: (DragStartDetails details) {
-          startingOffset = details.globalPosition;
-          startingValue = widget.currentTool.strokeProperties.size;
-        },
-        onPanUpdate: (DragUpdateDetails details) {
-          onDrag(details.globalPosition);
-        },
-        onPanEnd: (DragEndDetails details) {
-          startingOffset = null;
-        },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          child: Column(
-            children: [
-              Text(t.editor.penOptions.size),
-              Container(
-                width: widget.max,
-                height: widget.max,
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: colorScheme.onBackground,
-                    width: 1,
-                  ),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 100),
-                    width: Pen.currentPen.strokeProperties.size,
-                    height: Pen.currentPen.strokeProperties.size,
-                    decoration: BoxDecoration(
-                      color: colorScheme.onBackground,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-              ),
-              ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: widget.max),
-                child: TextField(
-                  controller: _controller,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    border: InputBorder.none,
-                  ),
-                  style: const TextStyle(
-                    fontSize: 14,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ],
+    return GestureDetector(
+      onHorizontalDragStart: axis == Axis.horizontal
+          ? (details) =>
+              onDrag(details.localPosition.dx / SizePicker.largeLength)
+          : null,
+      onHorizontalDragUpdate: axis == Axis.horizontal
+          ? (details) =>
+              onDrag(details.localPosition.dx / SizePicker.largeLength)
+          : null,
+      onVerticalDragStart: axis == Axis.vertical
+          ? (details) =>
+              onDrag(details.localPosition.dy / SizePicker.largeLength)
+          : null,
+      onVerticalDragUpdate: axis == Axis.vertical
+          ? (details) =>
+              onDrag(details.localPosition.dy / SizePicker.largeLength)
+          : null,
+      child: RotatedBox(
+        quarterTurns: axis == Axis.horizontal ? 0 : 1,
+        child: CustomPaint(
+          size: const Size(SizePicker.largeLength, SizePicker.smallLength),
+          painter: _SizeSliderPainter(
+            axis: axis,
+            minSize: pen.sizeMin,
+            maxSize: pen.sizeMax,
+            currentSize: pen.options.size,
+            trackColor: colorScheme.onSurface.withValues(alpha: 0.2),
+            thumbColor: colorScheme.primary,
           ),
         ),
       ),
     );
+  }
+}
+
+class _SizeSliderPainter extends CustomPainter {
+  _SizeSliderPainter({
+    required this.axis,
+    required this.minSize,
+    required this.maxSize,
+    required this.currentSize,
+    required this.trackColor,
+    required this.thumbColor,
+  });
+
+  final Axis axis;
+  final double minSize;
+  final double maxSize;
+  final double currentSize;
+  final Color trackColor;
+  final Color thumbColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    /// The smallest height the track can be
+    final leftHeight = size.height * minSize / maxSize;
+    final topLeft = Offset(0, (size.height - leftHeight) / 2);
+    final bottomLeft = Offset(0, topLeft.dy + leftHeight);
+    final topRight = Offset(size.width, 0);
+    final bottomRight = Offset(size.width, size.height);
+
+    // track
+    canvas.drawPath(
+      Path()
+        ..moveTo(topLeft.dx, topLeft.dy)
+        ..lineTo(bottomLeft.dx, bottomLeft.dy)
+        ..lineTo(bottomRight.dx, bottomRight.dy)
+        ..lineTo(topRight.dx, topRight.dy)
+        ..close(),
+      Paint()
+        ..color = trackColor
+        ..style = PaintingStyle.fill,
+    );
+
+    // thumb
+    final ratio = (currentSize - minSize) / (maxSize - minSize);
+    final thumbHeight = size.height * ratio;
+    final thumbRight = size.width * ratio;
+    final thumbTop = (size.height - thumbHeight) / 2;
+    canvas.drawPath(
+      Path()
+        ..moveTo(topLeft.dx, topLeft.dy)
+        ..lineTo(bottomLeft.dx, bottomLeft.dy)
+        ..lineTo(thumbRight, thumbTop + thumbHeight)
+        ..lineTo(thumbRight, thumbTop)
+        ..close(),
+      Paint()
+        ..color = thumbColor
+        ..style = PaintingStyle.fill,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
+    return oldDelegate is! _SizeSliderPainter ||
+        oldDelegate.axis != axis ||
+        oldDelegate.minSize != minSize ||
+        oldDelegate.maxSize != maxSize ||
+        oldDelegate.currentSize != currentSize ||
+        oldDelegate.trackColor != trackColor ||
+        oldDelegate.thumbColor != thumbColor;
   }
 }
