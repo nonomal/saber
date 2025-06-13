@@ -1,131 +1,254 @@
+import 'dart:async';
+import 'dart:io';
 
-import 'dart:math';
-
-import 'package:collapsible/collapsible.dart';
+import 'package:animations/animations.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:saber/components/canvas/_editor_image.dart';
-import 'package:saber/components/canvas/canvas_preview.dart';
-import 'package:saber/data/editor/editor_core_info.dart';
+import 'package:saber/components/canvas/_stroke.dart';
+import 'package:saber/components/canvas/inner_canvas.dart';
+import 'package:saber/components/canvas/invert_widget.dart';
+import 'package:saber/components/home/sync_indicator.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
+import 'package:saber/data/prefs.dart';
+import 'package:saber/data/routes.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor.dart';
 
 class PreviewCard extends StatefulWidget {
   PreviewCard({
     required this.filePath,
-    required this.onTap,
-  }) : super(key: ValueKey("PreviewCard$filePath"));
+    required this.toggleSelection,
+    required this.selected,
+    required this.isAnythingSelected,
+  }) : super(key: ValueKey('PreviewCard$filePath'));
 
   final String filePath;
-  final Function(String) onTap;
+  final bool selected;
+  final bool isAnythingSelected;
+  final void Function(String, bool) toggleSelection;
 
   @override
   State<PreviewCard> createState() => _PreviewCardState();
 }
 
 class _PreviewCardState extends State<PreviewCard> {
-  /// cache strokes so there's no delay the second time we see this preview card
-  static final Map<String, EditorCoreInfo> _mapFilePathToEditorInfo = {};
-
-  bool expanded = false;
-
-  late EditorCoreInfo _coreInfo;
-  EditorCoreInfo get coreInfo => _coreInfo;
-  set coreInfo(EditorCoreInfo coreInfo) {
-    _mapFilePathToEditorInfo[widget.filePath] = _coreInfo = coreInfo;
-  }
-
-  double get height {
-    double fullHeight = coreInfo.height;
-    double maxY = coreInfo.strokes.isEmpty ? 0 : coreInfo.strokes.map((stroke) => stroke.maxY).reduce(max);
-    for (EditorImage image in coreInfo.images) {
-      if (image.dstRect.bottom > maxY) maxY = image.dstRect.bottom;
-    }
-    return min(fullHeight, max(maxY, 0) + fullHeight * 0.1);
-  }
+  final expanded = ValueNotifier(false);
+  final thumbnail = _ThumbnailState();
 
   @override
   void initState() {
-    init();
-    FileManager.writeWatcher.addListener(findStrokes);
+    fileWriteSubscription =
+        FileManager.fileWriteStream.stream.listen(fileWriteListener);
 
+    expanded.value = widget.selected;
     super.initState();
   }
 
   @override
-  void didUpdateWidget(covariant PreviewCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.filePath != oldWidget.filePath) init(refresh: false);
-  }
+  void didChangeDependencies() {
+    super.didChangeDependencies();
 
-  init({refresh = true}) {
-    _coreInfo = _mapFilePathToEditorInfo[widget.filePath] ?? EditorCoreInfo();
-    if (_coreInfo.strokes.isEmpty || refresh) {
-      findStrokes();
+    final imageFile =
+        FileManager.getFile('${widget.filePath}${Editor.extension}.p');
+    if (kDebugMode && Platform.environment.containsKey('FLUTTER_TEST')) {
+      // Avoid FileImages in tests
+      thumbnail.image = MemoryImage(imageFile.readAsBytesSync());
     } else {
-      if (mounted) setState(() { });
+      thumbnail.image = FileImage(imageFile);
     }
   }
 
-  Future findStrokes() async {
-    if (!mounted) return;
+  StreamSubscription? fileWriteSubscription;
+  void fileWriteListener(FileOperation event) {
+    if (event.filePath != widget.filePath) return;
+    if (event.type == FileOperationType.delete) {
+      thumbnail.image = null;
+    } else if (event.type == FileOperationType.write) {
+      thumbnail.image?.evict();
+      thumbnail.markAsChanged();
+    } else {
+      throw Exception('Unknown file operation type: ${event.type}');
+    }
+  }
 
-    coreInfo = await EditorCoreInfo.loadFromFilePath(widget.filePath);
-
-    if (mounted) setState(() {});
+  void _toggleCardSelection() {
+    expanded.value = !expanded.value;
+    widget.toggleSelection(widget.filePath, expanded.value);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final disableAnimations = MediaQuery.disableAnimationsOf(context);
+    final transitionDuration =
+        Duration(milliseconds: disableAnimations ? 0 : 300);
+    final invert =
+        theme.brightness == Brightness.dark && Prefs.editorAutoInvert.value;
+
+    Widget card = MouseRegion(
+      cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onSecondaryTap: () => setState(() { expanded = !expanded; }),
-        child: InkWell(
-          onTap: () => widget.onTap(widget.filePath),
-          onLongPress: () => setState(() { expanded = !expanded; }),
-          borderRadius: BorderRadius.circular(10),
-          child: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CanvasPreview(
-                  path: widget.filePath,
-                  height: height,
-                  coreInfo: coreInfo.copyWith(strokes: coreInfo.strokes.where((stroke) => stroke.pageIndex == 0).toList()),
-                ),
-                const SizedBox(height: 8),
-
-                Text(widget.filePath.substring(widget.filePath.lastIndexOf("/") + 1)),
-
-                Collapsible(
-                  collapsed: !expanded,
-                  axis: CollapsibleAxis.vertical,
-                  maintainState: true,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+        onTap: widget.isAnythingSelected ? _toggleCardSelection : null,
+        onSecondaryTap: _toggleCardSelection,
+        onLongPress: _toggleCardSelection,
+        child: ColoredBox(
+          color: colorScheme.surfaceContainerLow,
+          child: Stack(
+            children: [
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Stack(
                     children: [
-                      IconButton(
-                        padding: EdgeInsets.zero,
-                        onPressed: () {
-                          FileManager.deleteFile(widget.filePath + Editor.extension);
-                        },
-                        icon: const Icon(Icons.delete_forever),
+                      AnimatedBuilder(
+                        animation: thumbnail,
+                        builder: (context, _) => AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          child: ConstrainedBox(
+                            key: ValueKey(thumbnail.updateCount),
+                            constraints: BoxConstraints(minHeight: 100),
+                            child: InvertWidget(
+                              invert: invert,
+                              child: thumbnail.doesImageExist
+                                  ? Image(image: thumbnail.image!)
+                                  : const _FallbackThumbnail(),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned.fill(
+                        left: -1,
+                        top: -1,
+                        right: -1,
+                        bottom: -1,
+                        child: ValueListenableBuilder(
+                          valueListenable: expanded,
+                          builder: (context, expanded, child) =>
+                              AnimatedOpacity(
+                            opacity: expanded ? 1 : 0,
+                            duration: const Duration(milliseconds: 200),
+                            child: IgnorePointer(
+                              ignoring: !expanded,
+                              child: child!,
+                            ),
+                          ),
+                          child: GestureDetector(
+                            onTap: _toggleCardSelection,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    colorScheme.surface.withValues(alpha: 0.2),
+                                    colorScheme.surface.withValues(alpha: 0.8),
+                                    colorScheme.surface.withValues(alpha: 1),
+                                  ],
+                                ),
+                              ),
+                              child: ColoredBox(
+                                color:
+                                    colorScheme.primary.withValues(alpha: 0.05),
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
-                ),
-              ],
-            ),
+                  Flexible(
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Text(
+                        widget.filePath
+                            .substring(widget.filePath.lastIndexOf('/') + 1),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              SyncIndicator(
+                filePath: widget.filePath,
+              ),
+            ],
           ),
         ),
       ),
+    );
+
+    return ValueListenableBuilder(
+      valueListenable: expanded,
+      builder: (context, expanded, _) {
+        return OpenContainer(
+          closedColor: colorScheme.surface,
+          closedShape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          closedElevation: expanded ? 4 : 1,
+          closedBuilder: (context, action) => card,
+          openColor: colorScheme.surface,
+          openBuilder: (context, action) => Editor(path: widget.filePath),
+          transitionDuration: transitionDuration,
+          routeSettings: RouteSettings(
+            name: RoutePaths.editFilePath(widget.filePath),
+          ),
+          onClosed: (_) {
+            thumbnail.image?.evict();
+            thumbnail.markAsChanged();
+          },
+        );
+      },
     );
   }
 
   @override
   void dispose() {
-    FileManager.writeWatcher.removeListener(findStrokes);
+    fileWriteSubscription?.cancel();
     super.dispose();
   }
+}
+
+class _FallbackThumbnail extends StatelessWidget {
+  const _FallbackThumbnail();
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: InnerCanvas.defaultBackgroundColor,
+      child: Center(
+        child: Text(
+          t.home.noPreviewAvailable,
+          style: TextTheme.of(context).bodyMedium?.copyWith(
+                color: Stroke.defaultColor.withValues(alpha: 0.7),
+                fontStyle: FontStyle.italic,
+              ),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+}
+
+class _ThumbnailState extends ChangeNotifier {
+  int updateCount = 0;
+  ImageProvider? _image;
+
+  void markAsChanged() {
+    ++updateCount;
+    notifyListeners();
+  }
+
+  ImageProvider? get image => _image;
+  set image(ImageProvider? image) {
+    _image = image;
+    markAsChanged();
+  }
+
+  bool get doesImageExist => switch (image) {
+        (FileImage fileImage) => fileImage.file.existsSync(),
+        null => false,
+        _ => true,
+      };
 }
